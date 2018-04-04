@@ -24,7 +24,7 @@ from policy_monitor import PolicyMonitor
 from worker import Worker
 
 
-tf.flags.DEFINE_string("model_dir", "/tmp/a3c", "Directory to write Tensorboard summaries and videos to.")
+tf.flags.DEFINE_string("model_dir", "model_files", "Directory to write Tensorboard summaries and videos to.")
 tf.flags.DEFINE_string("env", "Breakout-v0", "Name of gym Atari environment, e.g. Breakout-v0")
 tf.flags.DEFINE_integer("t_max", 5, "Number of steps before performing an update")
 tf.flags.DEFINE_integer("max_global_steps", None, "Stop training after this many steps in the environment. Defaults to running indefinitely.")
@@ -37,7 +37,7 @@ FLAGS = tf.flags.FLAGS
 def make_env(wrap=True):
   env = gym.envs.make(FLAGS.env)
   # remove the timelimitwrapper
-  # env = env.env
+  env = env.env
   if wrap:
     env = atari_helpers.AtariEnvWrapper(env)
   return env
