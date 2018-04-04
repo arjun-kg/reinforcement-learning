@@ -1,0 +1,77 @@
+[2018-04-04 18:45:52,820] Making new env: Breakout-v0
+/home/arjun/tensorflow/lib/python3.5/site-packages/tensorflow/python/ops/gradients_impl.py:95: UserWarning: Converting sparse IndexedSlices to a dense Tensor of unknown shape. This may consume a large amount of memory.
+  "Converting sparse IndexedSlices to a dense Tensor of unknown shape. "
+[2018-04-04 18:45:57,819] Making new env: Breakout-v0
+[2018-04-04 18:45:58,479] Making new env: Breakout-v0
+[2018-04-04 18:45:59,103] Making new env: Breakout-v0
+[2018-04-04 18:45:59,720] Making new env: Breakout-v0
+[2018-04-04 18:46:00,764] Making new env: Breakout-v0
+2018-04-04 18:46:01.212363: W tensorflow/core/platform/cpu_feature_guard.cc:45] The TensorFlow library wasn't compiled to use SSE4.1 instructions, but these are available on your machine and could speed up CPU computations.
+2018-04-04 18:46:01.212410: W tensorflow/core/platform/cpu_feature_guard.cc:45] The TensorFlow library wasn't compiled to use SSE4.2 instructions, but these are available on your machine and could speed up CPU computations.
+2018-04-04 18:46:01.212435: W tensorflow/core/platform/cpu_feature_guard.cc:45] The TensorFlow library wasn't compiled to use AVX instructions, but these are available on your machine and could speed up CPU computations.
+2018-04-04 18:46:01.334839: I tensorflow/stream_executor/cuda/cuda_gpu_executor.cc:893] successful NUMA node read from SysFS had negative value (-1), but there must be at least one NUMA node, so returning NUMA node zero
+2018-04-04 18:46:01.335139: I tensorflow/core/common_runtime/gpu/gpu_device.cc:955] Found device 0 with properties: 
+name: GeForce GT 740M
+major: 3 minor: 5 memoryClockRate (GHz) 1.0325
+pciBusID 0000:01:00.0
+Total memory: 983.44MiB
+Free memory: 672.06MiB
+2018-04-04 18:46:01.335167: I tensorflow/core/common_runtime/gpu/gpu_device.cc:976] DMA: 0 
+2018-04-04 18:46:01.335180: I tensorflow/core/common_runtime/gpu/gpu_device.cc:986] 0:   Y 
+2018-04-04 18:46:01.335194: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1045] Creating TensorFlow device (/gpu:0) -> (device: 0, name: GeForce GT 740M, pci bus id: 0000:01:00.0)
+[2018-04-04 18:46:02,270] Starting new video recorder writing to /tmp/a3c/videos/openaigym.video.0.7730.video000000.mp4
+Loading model checkpoint: /tmp/a3c/checkpoints/model
+Traceback (most recent call last):
+  File "./train.py", line 138, in <module>
+    coord.join(worker_threads)
+  File "/home/arjun/tensorflow/lib/python3.5/site-packages/tensorflow/python/training/coordinator.py", line 363, in join
+    while any(t.is_alive() for t in threads) and not self.wait_for_stop(1.0):
+  File "/home/arjun/tensorflow/lib/python3.5/site-packages/tensorflow/python/training/coordinator.py", line 311, in wait_for_stop
+    return self._stop_event.wait(timeout)
+  File "/usr/lib/python3.5/threading.py", line 549, in wait
+    signaled = self._cond.wait(timeout)
+  File "/usr/lib/python3.5/threading.py", line 297, in wait
+    gotit = waiter.acquire(True, timeout)
+KeyboardInterrupt
+Exception in thread Thread-3:
+Traceback (most recent call last):
+  File "/usr/lib/python3.5/threading.py", line 914, in _bootstrap_inner
+    self.run()
+  File "/usr/lib/python3.5/threading.py", line 862, in run
+    self._target(*self._args, **self._kwargs)
+  File "./train.py", line 128, in <lambda>
+    worker_fn = lambda worker=worker: worker.run(sess, coord, FLAGS.t_max)
+  File "/home/arjun/Documents/DDP/reinforcement-learning/PolicyGradient/a3c/worker.py", line 116, in run
+    return
+  File "/usr/lib/python3.5/contextlib.py", line 77, in __exit__
+    self.gen.throw(type, value, traceback)
+  File "/home/arjun/tensorflow/lib/python3.5/site-packages/tensorflow/python/framework/ops.py", line 3969, in get_controller
+    yield default
+  File "/home/arjun/Documents/DDP/reinforcement-learning/PolicyGradient/a3c/worker.py", line 116, in run
+    return
+  File "/usr/lib/python3.5/contextlib.py", line 77, in __exit__
+    self.gen.throw(type, value, traceback)
+  File "/home/arjun/tensorflow/lib/python3.5/site-packages/tensorflow/python/framework/ops.py", line 3969, in get_controller
+    yield default
+  File "/home/arjun/Documents/DDP/reinforcement-learning/PolicyGradient/a3c/worker.py", line 113, in run
+    self.update(transitions, sess)
+  File "/home/arjun/Documents/DDP/reinforcement-learning/PolicyGradient/a3c/worker.py", line 177, in update
+    policy_target = (reward - self._value_net_predict(transition.state, sess))
+  File "/home/arjun/Documents/DDP/reinforcement-learning/PolicyGradient/a3c/worker.py", line 125, in _value_net_predict
+    preds = sess.run(self.value_net.predictions, feed_dict)
+  File "/home/arjun/tensorflow/lib/python3.5/site-packages/tensorflow/python/client/session.py", line 895, in run
+    run_metadata_ptr)
+  File "/home/arjun/tensorflow/lib/python3.5/site-packages/tensorflow/python/client/session.py", line 1051, in _run
+    raise RuntimeError('Attempted to use a closed Session.')
+RuntimeError: Attempted to use a closed Session.
+
+Exception ignored in: <module 'threading' from '/usr/lib/python3.5/threading.py'>
+Traceback (most recent call last):
+  File "/usr/lib/python3.5/threading.py", line 1288, in _shutdown
+    t.join()
+  File "/usr/lib/python3.5/threading.py", line 1054, in join
+    self._wait_for_tstate_lock()
+  File "/usr/lib/python3.5/threading.py", line 1070, in _wait_for_tstate_lock
+    elif lock.acquire(block, timeout):
+KeyboardInterrupt
+[2018-04-04 18:46:27,286] Finished writing results. You can upload them to the scoreboard via gym.upload('/tmp/a3c/videos')
