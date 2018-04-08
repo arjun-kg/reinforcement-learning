@@ -12,4 +12,4 @@ cd /storage/home/arjunkg/reinforcement-learning/PolicyGradient/a3c
 # Run the code. The -u option is used here to use unbuffered writes
 # so that output is piped to the file as and when it is produced.
 # Here, the code is the MNIST Tensorflow example.
-./train.py &> out
+./train.py --parallelism 32&> out
