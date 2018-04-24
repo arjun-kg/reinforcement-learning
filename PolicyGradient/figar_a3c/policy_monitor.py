@@ -18,7 +18,7 @@ import gym
 
 from lib.atari.state_processor import StateProcessor
 from lib.atari import helpers as atari_helpers
-from estimators import ValueEstimator, PolicyEstimator
+from estimators import ValueEstimator, PolicyEstimator, RepetitionEstimator
 from worker import make_copy_params_op
 
 
@@ -32,13 +32,14 @@ class PolicyMonitor(object):
     policy_net: A policy estimator
     summary_writer: a tf.train.SummaryWriter used to write Tensorboard summaries
   """
-  def __init__(self, env, policy_net, summary_writer, saver=None):
+  def __init__(self, env, policy_net, repetition_net,summary_writer, saver=None):
 
     self.video_dir = os.path.join(summary_writer.get_logdir(), "../videos")
     self.video_dir = os.path.abspath(self.video_dir)
 
     self.env = Monitor(env, directory=self.video_dir, video_callable=lambda x: True, resume=True)
     self.global_policy_net = policy_net
+    self.global_repetition_net = repetition_net
     self.summary_writer = summary_writer
     self.saver = saver
     self.sp = StateProcessor()
@@ -53,6 +54,7 @@ class PolicyMonitor(object):
     # Local policy net
     with tf.variable_scope("policy_eval"):
       self.policy_net = PolicyEstimator(policy_net.num_outputs)
+      self.repetition_net = RepetitionEstimator(repetition_net.num_outputs,reuse=True)
 
     # Op to copy params from global policy/value net parameters
     self.copy_params_op = make_copy_params_op(
@@ -64,10 +66,15 @@ class PolicyMonitor(object):
     preds = sess.run(self.policy_net.predictions, feed_dict)
     return preds["probs"][0]
 
+  def _repetition_net_predict(self, state, sess):
+    feed_dict = { self.repetition_net.states: [state] }
+    preds = sess.run(self.repetition_net.predictions, feed_dict)
+    return preds["probs"][0]
+
   def eval_once(self, sess):
     with sess.as_default(), sess.graph.as_default():
       # Copy params to local model
-      global_step, _ = sess.run([tf.contrib.framework.get_global_step(), self.copy_params_op])
+      global_step, _ = sess.run([tf.train.get_global_step(), self.copy_params_op])
 
       # Run an episode
       done = False
@@ -77,11 +84,15 @@ class PolicyMonitor(object):
       while not done:
         action_probs = self._policy_net_predict(state, sess)
         action = np.random.choice(np.arange(len(action_probs)), p=action_probs)
-        next_state, reward, done, _ = self.env.step(action)
-        next_state = atari_helpers.atari_make_next_state(state, self.sp.process(next_state))
-        total_reward += reward
-        episode_length += 1
-        state = next_state
+        repetition_probs = self._repetition_net_predict(state, sess)
+        repetition = np.random.choice(np.arange(len(repetition_probs)), p=repetition_probs)
+        for _ in range(repetition):
+          next_state, reward, done, _ = self.env.step(action)
+          next_state = atari_helpers.atari_make_next_state(state, self.sp.process(next_state))
+          total_reward += reward
+          episode_length += 1
+          state = next_state
+          if done: break
 
       # Add summaries
       episode_summary = tf.Summary()

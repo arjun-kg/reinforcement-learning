@@ -10,7 +10,6 @@ import itertools
 import shutil
 import threading
 import multiprocessing
-
 from inspect import getsourcefile
 current_path = os.path.dirname(os.path.abspath(getsourcefile(lambda:0)))
 import_path = os.path.abspath(os.path.join(current_path, "../.."))
@@ -19,10 +18,11 @@ if import_path not in sys.path:
   sys.path.append(import_path)
 
 from lib.atari import helpers as atari_helpers
-from estimators import ValueEstimator, PolicyEstimator
+from estimators import ValueEstimator, PolicyEstimator, RepetitionEstimator
 from policy_monitor import PolicyMonitor
 from worker import Worker
 
+REPETITIONS = 10
 
 tf.flags.DEFINE_string("model_dir", "/tmp/a3c", "Directory to write Tensorboard summaries and videos to.")
 tf.flags.DEFINE_string("env", "Breakout-v0", "Name of gym Atari environment, e.g. Breakout-v0")
@@ -37,7 +37,7 @@ FLAGS = tf.flags.FLAGS
 def make_env(wrap=True):
   env = gym.envs.make(FLAGS.env)
   # remove the timelimitwrapper
-  # env = env.env
+  env = env.env
   if wrap:
     env = atari_helpers.AtariEnvWrapper(env)
   return env
@@ -77,6 +77,7 @@ with tf.device("/cpu:0"):
   with tf.variable_scope("global") as vs:
     policy_net = PolicyEstimator(num_outputs=len(VALID_ACTIONS))
     value_net = ValueEstimator(reuse=True)
+    repetition_net = RepetitionEstimator(num_outputs=REPETITIONS, reuse=True)
 
   # Global step iterator
   global_counter = itertools.count()
@@ -96,6 +97,7 @@ with tf.device("/cpu:0"):
       env=make_env(),
       policy_net=policy_net,
       value_net=value_net,
+      repetition_net=repetition_net,
       global_counter=global_counter,
       discount_factor = 0.99,
       summary_writer=worker_summary_writer,
@@ -109,6 +111,7 @@ with tf.device("/cpu:0"):
   pe = PolicyMonitor(
     env=make_env(wrap=False),
     policy_net=policy_net,
+    repetition_net=repetition_net,
     summary_writer=summary_writer,
     saver=saver)
 

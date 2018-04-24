@@ -16,9 +16,9 @@ if import_path not in sys.path:
 # from lib import plotting
 from lib.atari.state_processor import StateProcessor
 from lib.atari import helpers as atari_helpers
-from estimators import ValueEstimator, PolicyEstimator
+from estimators import ValueEstimator, PolicyEstimator, RepetitionEstimator
 
-Transition = collections.namedtuple("Transition", ["state", "action", "reward", "next_state", "done"])
+Transition = collections.namedtuple("Transition", ["state", "action","repetition", "reward", "next_state", "done"])
 
 
 def make_copy_params_op(v1_list, v2_list):
@@ -47,7 +47,7 @@ def make_train_op(local_estimator, global_estimator):
   _, global_vars = zip(*global_estimator.grads_and_vars)
   local_global_grads_and_vars = list(zip(local_grads, global_vars))
   return global_estimator.optimizer.apply_gradients(local_global_grads_and_vars,
-          global_step=tf.contrib.framework.get_global_step())
+          global_step=tf.train.get_global_step())
 
 
 class Worker(object):
@@ -64,13 +64,14 @@ class Worker(object):
     summary_writer: A tf.train.SummaryWriter for Tensorboard summaries
     max_global_steps: If set, stop coordinator when global_counter > max_global_steps
   """
-  def __init__(self, name, env, policy_net, value_net, global_counter, discount_factor=0.99, summary_writer=None, max_global_steps=None):
+  def __init__(self, name, env, policy_net, value_net,repetition_net, global_counter, discount_factor=0.99, summary_writer=None, max_global_steps=None):
     self.name = name
     self.discount_factor = discount_factor
     self.max_global_steps = max_global_steps
-    self.global_step = tf.contrib.framework.get_global_step()
+    self.global_step = tf.train.get_global_step()
     self.global_policy_net = policy_net
     self.global_value_net = value_net
+    self.global_repetition_net = repetition_net
     self.global_counter = global_counter
     self.local_counter = itertools.count()
     self.sp = StateProcessor()
@@ -80,6 +81,7 @@ class Worker(object):
     # Create local policy/value nets that are not updated asynchronously
     with tf.variable_scope(name):
       self.policy_net = PolicyEstimator(policy_net.num_outputs)
+      self.repetition_net = RepetitionEstimator(repetition_net.num_outputs,reuse=True)
       self.value_net = ValueEstimator(reuse=True)
 
     # Op to copy params from global policy/valuenets
@@ -89,6 +91,8 @@ class Worker(object):
 
     self.vnet_train_op = make_train_op(self.value_net, self.global_value_net)
     self.pnet_train_op = make_train_op(self.policy_net, self.global_policy_net)
+    self.rnet_train_op = make_train_op(self.repetition_net, self.global_repetition_net)
+
 
     self.state = None
 
@@ -120,6 +124,11 @@ class Worker(object):
     preds = sess.run(self.policy_net.predictions, feed_dict)
     return preds["probs"][0]
 
+  def _repetition_net_predict(self, state, sess):
+    feed_dict = { self.repetition_net.states: [state] }
+    preds = sess.run(self.repetition_net.predictions, feed_dict)
+    return preds["probs"][0]
+
   def _value_net_predict(self, state, sess):
     feed_dict = { self.value_net.states: [state] }
     preds = sess.run(self.value_net.predictions, feed_dict)
@@ -131,25 +140,38 @@ class Worker(object):
       # Take a step
       action_probs = self._policy_net_predict(self.state, sess)
       action = np.random.choice(np.arange(len(action_probs)), p=action_probs)
-      next_state, reward, done, _ = self.env.step(action)
-      next_state = atari_helpers.atari_make_next_state(self.state, self.sp.process(next_state))
+      repetition_probs = self._repetition_net_predict(self.state, sess)
+      repetition = np.random.choice(np.arange(len(repetition_probs)), p=repetition_probs)
 
-      # Store transition
-      transitions.append(Transition(
-        state=self.state, action=action, reward=reward, next_state=next_state, done=done))
+      rewards_collected = []
 
-      # Increase local and global counters
-      local_t = next(self.local_counter)
-      global_t = next(self.global_counter)
+      # print("repetition", self.name,repetition)
+      for rep in range(repetition+1):
+        next_state, reward, done, _ = self.env.step(action)
+        # print(self.name,rep)
+        # print("action",action)
+        next_state = atari_helpers.atari_make_next_state(self.state, self.sp.process(next_state))
+        rewards_collected.append(reward)
 
-      if local_t % 100 == 0:
-        tf.logging.info("{}: local Step {}, global step {}".format(self.name, local_t, global_t))
+        # Increase local and global counters
+        local_t = next(self.local_counter)
+        global_t = next(self.global_counter)
 
-      if done:
-        self.state = atari_helpers.atari_make_initial_state(self.sp.process(self.env.reset()))
-        break
-      else:
-        self.state = next_state
+        if local_t % 100 == 0:
+          tf.logging.info("{}: local Step {}, global step {}".format(self.name, local_t, global_t))
+
+        if done:
+          transitions.append(Transition(state=self.state, action=action, repetition=repetition,reward=sum(rewards_collected)/len(rewards_collected), next_state=next_state, done=done))
+         
+          self.state = atari_helpers.atari_make_initial_state(self.sp.process(self.env.reset()))
+          break
+        else:
+          if rep == repetition:
+            transitions.append(Transition(state=self.state, action=action, repetition=repetition,reward=sum(rewards_collected)/len(rewards_collected), next_state=next_state, done=done))
+
+          self.state = next_state
+
+
     return transitions, local_t, global_t
 
   def update(self, transitions, sess):
@@ -169,41 +191,63 @@ class Worker(object):
     # Accumulate minibatch exmaples
     states = []
     policy_targets = []
+    repetition_targets = []
     value_targets = []
     actions = []
+    repetitions = []
 
     for transition in transitions[::-1]:
       reward = transition.reward + self.discount_factor * reward
       policy_target = (reward - self._value_net_predict(transition.state, sess))
+      repetition_target = policy_target #HMMMM????
       # Accumulate updates
       states.append(transition.state)
       actions.append(transition.action)
+      repetitions.append(transition.repetition)
       policy_targets.append(policy_target)
+      repetition_targets.append(repetition_target)
       value_targets.append(reward)
+
+    # print("Check")
+    # # print("State",states)
+    # print("PT",policy_targets)
+    # print("actions",actions)
+    # print("reptare",repetition_targets)
+    # print("rep",repetitions)
+    # print("value_targ",value_targets)
+    # print("End check")
 
     feed_dict = {
       self.policy_net.states: np.array(states),
       self.policy_net.targets: policy_targets,
       self.policy_net.actions: actions,
+      self.repetition_net.states: np.array(states),
+      self.repetition_net.targets: repetition_targets,
+      self.repetition_net.repetitions: repetitions,
       self.value_net.states: np.array(states),
-      self.value_net.targets: value_targets,
+      self.value_net.targets: value_targets
     }
 
     # Train the global estimators using local gradients
-    global_step, pnet_loss, vnet_loss, _, _, pnet_summaries, vnet_summaries = sess.run([
+    global_step, pnet_loss, vnet_loss,rnet_loss, _, _, _,pnet_summaries, vnet_summaries,rnet_summaries = sess.run([
       self.global_step,
       self.policy_net.loss,
       self.value_net.loss,
+      self.repetition_net.loss,
       self.pnet_train_op,
       self.vnet_train_op,
+      self.rnet_train_op,
       self.policy_net.summaries,
-      self.value_net.summaries
+      self.value_net.summaries,
+      self.repetition_net.summaries
     ], feed_dict)
 
     # Write summaries
     if self.summary_writer is not None:
       self.summary_writer.add_summary(pnet_summaries, global_step)
       self.summary_writer.add_summary(vnet_summaries, global_step)
+      self.summary_writer.add_summary(rnet_summaries, global_step)
       self.summary_writer.flush()
 
-    return pnet_loss, vnet_loss, pnet_summaries, vnet_summaries
+    return pnet_loss, vnet_loss, rnet_loss, pnet_summaries, vnet_summaries,rnet_summaries
+
